@@ -3,8 +3,10 @@ from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.contrib import messages
+from django.utils import timezone
+from datetime import timedelta
 from .models import WorkoutPlan, Exercise, WorkoutLog
-from .forms import WorkoutLogForm
+from .forms import WorkoutLogForm, MAX_DAYS_BACK
 
 # Login view
 def login_view(request):
@@ -158,9 +160,13 @@ def workout_log(request):
             if chosen:
                 form = WorkoutLogForm(user=request.user, initial={'exercise': chosen.id})
 
+    # Limits for the date picker, so the browser greys out impossible dates
+    today = timezone.localdate()
     return render(request, 'core/workout_log.html', {
         'form': form,
         'exercises': form.fields['exercise'].queryset,
+        'today': today,
+        'oldest_date': today - timedelta(days=MAX_DAYS_BACK),
     })
 
 
@@ -173,7 +179,7 @@ def my_progress(request):
     # select_related loads each log's exercise in the SAME database query
     logs = (WorkoutLog.objects.filter(user=request.user)
             .select_related('exercise')
-            .order_by('-completed_on'))
+            .order_by('-completed_on', '-id'))  # newest date first; same date = newest entry first
     
     return render(request, 'core/my_progress.html', {
         'logs': logs,

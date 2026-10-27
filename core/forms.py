@@ -1,5 +1,11 @@
+from datetime import timedelta
+
 from django import forms
+from django.utils import timezone
 from .models import WorkoutLog, Exercise
+
+# How far back a member may log a workout (catches typos like 1926 instead of 2026)
+MAX_DAYS_BACK = 365
 
 
 # Form for a member logging a workout.
@@ -7,7 +13,7 @@ from .models import WorkoutLog, Exercise
 class WorkoutLogForm(forms.ModelForm):
     class Meta:
         model = WorkoutLog
-        fields = ['exercise', 'sets_done', 'reps_done', 'weight_used', 'notes']
+        fields = ['completed_on', 'exercise', 'sets_done', 'reps_done', 'weight_used', 'notes']
 
     def __init__(self, *args, user=None, **kwargs):
         super().__init__(*args, **kwargs)
@@ -30,3 +36,12 @@ class WorkoutLogForm(forms.ModelForm):
         if weight > 500:
             raise forms.ValidationError("That looks like a typo - the maximum is 500 kg.")
         return weight
+
+    def clean_completed_on(self):
+        date = self.cleaned_data['completed_on']
+        today = timezone.localdate()
+        if date > today:
+            raise forms.ValidationError("You can't log a workout in the future.")
+        if date < today - timedelta(days=MAX_DAYS_BACK):
+            raise forms.ValidationError(f"You can only log workouts from the last {MAX_DAYS_BACK} days.")
+        return date

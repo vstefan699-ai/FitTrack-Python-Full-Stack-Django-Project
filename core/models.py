@@ -2,6 +2,7 @@ from django.db import models
 from django.contrib.auth.models import User
 from django.core.validators import MinValueValidator, MaxValueValidator
 from django.db.models.signals import post_save
+from django.utils import timezone
 from django.dispatch import receiver
 
 # A workout plan created by an admin
@@ -49,7 +50,8 @@ class WorkoutLog(models.Model):
         help_text="Reps per set"
     )
     weight_used = models.FloatField()
-    completed_on = models.DateField(auto_now_add=True)
+    # Defaults to today, but the member can change it (e.g. logging yesterday's session)
+    completed_on = models.DateField(default=timezone.localdate)
     notes = models.TextField(blank=True)
 
     def __str__(self):

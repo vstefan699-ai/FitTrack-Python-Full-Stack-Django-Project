@@ -37,6 +37,25 @@
                             <div class="text-danger small mb-2">{{ error }}</div>
                             {% endfor %}
 
+                            <!-- Date of the workout (defaults to today) -->
+                            <div class="mb-3">
+                                <label for="id_completed_on" class="form-label text-muted">Workout Date</label>
+                                <input
+                                    type="date"
+                                    name="completed_on"
+                                    id="id_completed_on"
+                                    class="form-control bg-dark text-white border-secondary"
+                                    value="{{ form.completed_on.value|default_if_none:''|stringformat:'s' }}"
+                                    min="{{ oldest_date|date:'Y-m-d' }}"
+                                    max="{{ today|date:'Y-m-d' }}"
+                                    style="color-scheme: dark;"
+                                    required
+                                >
+                                {% for error in form.completed_on.errors %}
+                                <div class="text-danger small mt-1">{{ error }}</div>
+                                {% endfor %}
+                            </div>
+
                             <!-- Exercise selector -->
                             <div class="mb-3">
                                 <label for="id_exercise" class="form-label text-muted">Exercise</label>
