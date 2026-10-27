@@ -12,7 +12,7 @@
             <a href="{% url 'admin_dashboard' %}">
                 <i class="fas fa-home me-2"></i> Dashboard
             </a>
-            <a href="{% url 'manage_plans' %}">
+            <a href="{% url 'manage_plans' %}" class="active">
                 <i class="fas fa-dumbbell me-2"></i> Workout Plans
             </a>
             <a href="{% url 'manage_users' %}">
@@ -22,18 +22,22 @@
 
         <!-- Main content -->
         <div class="col-md-10 p-4">
+
+            <!-- ===== Workout plans ===== -->
             <div class="d-flex justify-content-between align-items-center mb-4">
                 <div>
                     <h3 class="fw-bold mb-1">Workout Plans</h3>
-                    <p class="text-muted">Manage all training programs</p>
+                    <p class="text-muted mb-0">Manage all training programs</p>
                 </div>
+                <a href="{% url 'plan_create' %}" class="btn btn-danger">
+                    <i class="fas fa-plus"></i> New Plan
+                </a>
             </div>
 
-            <!-- Plans list -->
-            <div class="row g-3">
+            <div class="row g-3 mb-5">
                 {% for plan in plans %}
                 <div class="col-md-4">
-                    <div class="card p-3">
+                    <div class="card p-3 h-100">
                         <h6 class="fw-bold" style="color: #e63946;">
                             <i class="fas fa-dumbbell me-1"></i> {{ plan.name }}
                         </h6>
@@ -42,31 +46,110 @@
 
                         <!-- Exercises in this plan -->
                         <p class="text-muted small text-uppercase fw-bold">Exercises</p>
-                        {% for exercise in plan.exercises.all %}
+                        {% for entry in plan.plan_exercises.all %}
                         <div class="d-flex justify-content-between mb-1">
-                            <span class="small">{{ exercise.name }}</span>
-                            <span class="small text-muted">
-                                {{ exercise.sets }}x{{ exercise.reps }}
-                            </span>
+                            <span class="small">{{ entry.exercise.name }}</span>
+                            <span class="small text-muted">{{ entry.sets }}x{{ entry.reps }}</span>
                         </div>
                         {% empty %}
                         <p class="text-muted small">No exercises yet.</p>
                         {% endfor %}
 
                         <div class="mt-3">
-                            <span class="badge bg-danger">
-                                {{ plan.exercises.count }} exercises
-                            </span>
+                            <span class="badge bg-danger">{{ plan.plan_exercises.all|length }} exercises</span>
                             <span class="badge bg-secondary ms-1">
-                                {{ plan.muscle_groups }}
+                                {{ plan.member_count }} member{{ plan.member_count|pluralize }}
                             </span>
+                        </div>
+
+                        <!-- Edit / Delete -->
+                        <div class="d-flex gap-2 mt-3 pt-2 mt-auto">
+                            <a href="{% url 'plan_edit' plan.id %}" class="btn btn-outline-light btn-sm">
+                                <i class="fas fa-pen"></i> Edit
+                            </a>
+                            <form method="POST" action="{% url 'plan_delete' plan.id %}"
+                                  onsubmit="return confirm('Delete the plan \'{{ plan.name|escapejs }}\'? Members on it will have no plan, but their workout history is kept.');">
+                                {% csrf_token %}
+                                <button type="submit" class="btn btn-outline-danger btn-sm">
+                                    <i class="fas fa-trash"></i> Delete
+                                </button>
+                            </form>
                         </div>
                     </div>
                 </div>
                 {% empty %}
-                <p class="text-muted">No workout plans found.</p>
+                <p class="text-muted">No workout plans yet. Click "New Plan" to build one.</p>
                 {% endfor %}
             </div>
+
+            <!-- ===== Shared exercise library ===== -->
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <div>
+                    <h4 class="fw-bold mb-1">Exercise Library</h4>
+                    <p class="text-muted mb-0">Exercises every plan can pick from</p>
+                </div>
+                <a href="{% url 'exercise_create' %}" class="btn btn-danger">
+                    <i class="fas fa-plus"></i> Add Exercise
+                </a>
+            </div>
+
+            <div class="card p-3">
+                <div class="table-responsive">
+                    <table class="table table-dark table-hover align-middle mb-0">
+                        <thead>
+                            <tr>
+                                <th>Exercise</th>
+                                <th>Muscle Group</th>
+                                <th>Description</th>
+                                <th>Used In</th>
+                                <th class="text-end">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for exercise in exercises %}
+                            <tr>
+                                <td class="fw-bold">{{ exercise.name }}</td>
+                                <td><span class="badge bg-secondary">{{ exercise.get_muscle_group_display }}</span></td>
+                                <td class="text-muted small">{{ exercise.description|truncatewords:12|default:"—" }}</td>
+                                <td class="text-muted small">
+                                    {{ exercise.plan_count }} plan{{ exercise.plan_count|pluralize }},
+                                    {{ exercise.log_count }} log{{ exercise.log_count|pluralize }}
+                                </td>
+                                <td class="text-end">
+                                    <div class="d-inline-flex gap-2">
+                                        <a href="{% url 'exercise_edit' exercise.id %}" class="btn btn-outline-light btn-sm">
+                                            <i class="fas fa-pen"></i>
+                                        </a>
+                                        {% if exercise.plan_count or exercise.log_count %}
+                                        <!-- In use: deleting would break plans or wipe history -->
+                                        <button type="button" class="btn btn-outline-secondary btn-sm" disabled
+                                                title="Used in a plan or workout history">
+                                            <i class="fas fa-lock"></i>
+                                        </button>
+                                        {% else %}
+                                        <form method="POST" action="{% url 'exercise_delete' exercise.id %}"
+                                              onsubmit="return confirm('Remove \'{{ exercise.name|escapejs }}\' from the library?');">
+                                            {% csrf_token %}
+                                            <button type="submit" class="btn btn-outline-danger btn-sm">
+                                                <i class="fas fa-trash"></i>
+                                            </button>
+                                        </form>
+                                        {% endif %}
+                                    </div>
+                                </td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="5" class="text-center text-muted py-4">
+                                    The library is empty. Click "Add Exercise" to start.
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
         </div>
     </div>
 </div>

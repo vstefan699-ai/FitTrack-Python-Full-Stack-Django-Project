@@ -1,0 +1,86 @@
+{% extends 'core/base.html' %}
+
+{% block title %}{% if is_edit %}Edit Exercise{% else %}Add Exercise{% endif %} | FitTrack Pro{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+
+        <!-- Sidebar -->
+        <div class="col-md-2 sidebar p-3">
+            <p class="text-muted small text-uppercase fw-bold px-2 mt-2">Menu</p>
+            <a href="{% url 'admin_dashboard' %}">
+                <i class="fas fa-home me-2"></i> Dashboard
+            </a>
+            <a href="{% url 'manage_plans' %}" class="active">
+                <i class="fas fa-dumbbell me-2"></i> Workout Plans
+            </a>
+            <a href="{% url 'manage_users' %}">
+                <i class="fas fa-users me-2"></i> Members
+            </a>
+        </div>
+
+        <!-- Main content -->
+        <div class="col-md-10 p-4">
+            <a href="{% url 'manage_plans' %}" class="text-muted small text-decoration-none">
+                <i class="fas fa-arrow-left"></i> Back to plans
+            </a>
+            <h3 class="fw-bold mt-2 mb-1">{% if is_edit %}Edit "{{ exercise.name }}"{% else %}Add Exercise{% endif %}</h3>
+            <p class="text-muted mb-4">
+                {% if is_edit %}Changes show up in every plan that uses this exercise{% else %}Add it once, use it in any plan{% endif %}
+            </p>
+
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="card p-4">
+                        <form method="POST">
+                            {% csrf_token %}
+
+                            <div class="mb-3">
+                                <label for="id_name" class="form-label">Exercise Name</label>
+                                <input type="text" name="name" id="id_name" maxlength="200"
+                                       class="form-control bg-dark text-white border-secondary"
+                                       placeholder="e.g. Barbell Bench Press"
+                                       value="{{ form.name.value|default_if_none:'' }}" required>
+                                {% for error in form.name.errors %}
+                                <div class="text-danger small mt-1">{{ error }}</div>
+                                {% endfor %}
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="id_muscle_group" class="form-label">Muscle Group</label>
+                                <select name="muscle_group" id="id_muscle_group"
+                                        class="form-select bg-dark text-white border-secondary" required>
+                                    <option value="">Choose a muscle group...</option>
+                                    {% for value, label in form.fields.muscle_group.choices %}
+                                    {% if value %}
+                                    <option value="{{ value }}" {% if form.muscle_group.value == value %}selected{% endif %}>{{ label }}</option>
+                                    {% endif %}
+                                    {% endfor %}
+                                </select>
+                                {% for error in form.muscle_group.errors %}
+                                <div class="text-danger small mt-1">{{ error }}</div>
+                                {% endfor %}
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="id_description" class="form-label">Description (optional)</label>
+                                <textarea name="description" id="id_description" rows="3"
+                                          class="form-control bg-dark text-white border-secondary"
+                                          placeholder="Form cues, equipment, tips...">{{ form.description.value|default_if_none:'' }}</textarea>
+                            </div>
+
+                            <div class="d-flex gap-2">
+                                <button type="submit" class="btn btn-danger">
+                                    <i class="fas fa-check"></i> {% if is_edit %}Save Changes{% else %}Add to Library{% endif %}
+                                </button>
+                                <a href="{% url 'manage_plans' %}" class="btn btn-outline-light">Cancel</a>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,12 +1,14 @@
-from django.shortcuts import render, redirect
+from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.contrib import messages
+from django.db.models import Count, ProtectedError
+from django.views.decorators.http import require_POST
 from django.utils import timezone
 from datetime import timedelta
-from .models import WorkoutPlan, Exercise, WorkoutLog
-from .forms import WorkoutLogForm, MAX_DAYS_BACK
+from .models import WorkoutPlan, Exercise, WorkoutLog, get_assigned_plan
+from .forms import WorkoutLogForm, ExerciseForm, PlanForm, MAX_DAYS_BACK
 
 # Login view
 def login_view(request):
@@ -103,19 +105,155 @@ def user_dashboard(request):
         return redirect('admin_dashboard')
     
     total_logs = WorkoutLog.objects.filter(user=request.user).count()
+    plan = get_assigned_plan(request.user)
+    # The plan's exercises + targets, with each exercise loaded in the same query
+    plan_entries = plan.plan_exercises.select_related('exercise') if plan else []
     
     return render(request, 'core/user_dashboard.html', {
         'total_logs': total_logs,
+        'plan': plan,
+        'plan_entries': plan_entries,
     })
 
-# Manage workout plans
+# Manage workout plans + the shared exercise library
 @login_required(login_url='login')
 def manage_plans(request):
     if not request.user.is_staff:
         return redirect('user_dashboard')
     
-    plans = WorkoutPlan.objects.all()
-    return render(request, 'core/manage_plans.html', {'plans': plans})
+    # prefetch_related: load every plan's exercises in ONE extra query
+    # annotate(Count): let the database count members per plan
+    plans = (WorkoutPlan.objects
+             .prefetch_related('plan_exercises__exercise')
+             .annotate(member_count=Count('userprofile', distinct=True))
+             .order_by('name'))
+    # How many plans/logs use each exercise (used ones can't be deleted)
+    exercises = Exercise.objects.annotate(
+        plan_count=Count('plan_entries', distinct=True),
+        log_count=Count('workoutlog', distinct=True),
+    )
+    return render(request, 'core/manage_plans.html', {
+        'plans': plans,
+        'exercises': exercises,
+    })
+
+
+# Create a new plan with the builder
+@login_required(login_url='login')
+def plan_create(request):
+    if not request.user.is_staff:
+        return redirect('user_dashboard')
+
+    if not Exercise.objects.exists():
+        messages.error(request, 'Add some exercises to the library before creating a plan.')
+        return redirect('manage_plans')
+
+    if request.method == 'POST':
+        form = PlanForm(request.POST)
+        if form.is_valid():
+            form.instance.created_by = request.user  # the form doesn't know who's creating it
+            plan = form.save()
+            messages.success(request, f'Plan "{plan.name}" created!')
+            return redirect('manage_plans')
+        messages.error(request, 'Please fix the errors below.')
+    else:
+        form = PlanForm()
+
+    return render(request, 'core/plan_form.html', {'form': form, 'is_edit': False})
+
+
+# Edit an existing plan (same builder, pre-filled)
+@login_required(login_url='login')
+def plan_edit(request, plan_id):
+    if not request.user.is_staff:
+        return redirect('user_dashboard')
+
+    plan = get_object_or_404(WorkoutPlan, id=plan_id)  # bad id = 404 page, not a crash
+
+    if request.method == 'POST':
+        form = PlanForm(request.POST, instance=plan)
+        if form.is_valid():
+            form.save()
+            messages.success(request, f'Plan "{plan.name}" updated!')
+            return redirect('manage_plans')
+        messages.error(request, 'Please fix the errors below.')
+    else:
+        form = PlanForm(instance=plan)
+
+    return render(request, 'core/plan_form.html', {'form': form, 'is_edit': True, 'plan': plan})
+
+
+# Delete a plan (POST only - a plain link must never delete anything)
+@login_required(login_url='login')
+@require_POST
+def plan_delete(request, plan_id):
+    if not request.user.is_staff:
+        return redirect('user_dashboard')
+
+    plan = get_object_or_404(WorkoutPlan, id=plan_id)
+    name = plan.name
+    # Members on this plan get "no plan" (SET_NULL); their workout history stays
+    plan.delete()
+    messages.success(request, f'Plan "{name}" deleted. Members\' workout history was kept.')
+    return redirect('manage_plans')
+
+
+# Add an exercise to the shared library
+@login_required(login_url='login')
+def exercise_create(request):
+    if not request.user.is_staff:
+        return redirect('user_dashboard')
+
+    if request.method == 'POST':
+        form = ExerciseForm(request.POST)
+        if form.is_valid():
+            exercise = form.save()
+            messages.success(request, f'"{exercise.name}" added to the library!')
+            return redirect('manage_plans')
+        messages.error(request, 'Please fix the errors below.')
+    else:
+        form = ExerciseForm()
+
+    return render(request, 'core/exercise_form.html', {'form': form, 'is_edit': False})
+
+
+# Edit a library exercise (changes show in every plan that uses it)
+@login_required(login_url='login')
+def exercise_edit(request, exercise_id):
+    if not request.user.is_staff:
+        return redirect('user_dashboard')
+
+    exercise = get_object_or_404(Exercise, id=exercise_id)
+
+    if request.method == 'POST':
+        form = ExerciseForm(request.POST, instance=exercise)
+        if form.is_valid():
+            form.save()
+            messages.success(request, f'"{exercise.name}" updated!')
+            return redirect('manage_plans')
+        messages.error(request, 'Please fix the errors below.')
+    else:
+        form = ExerciseForm(instance=exercise)
+
+    return render(request, 'core/exercise_form.html', {'form': form, 'is_edit': True, 'exercise': exercise})
+
+
+# Delete a library exercise - only allowed if no plan or workout log uses it
+@login_required(login_url='login')
+@require_POST
+def exercise_delete(request, exercise_id):
+    if not request.user.is_staff:
+        return redirect('user_dashboard')
+
+    exercise = get_object_or_404(Exercise, id=exercise_id)
+    name = exercise.name
+    try:
+        exercise.delete()
+        messages.success(request, f'"{name}" removed from the library.')
+    except ProtectedError:
+        # PROTECT on PlanExercise/WorkoutLog stopped the delete
+        messages.error(request, f'"{name}" is used in a plan or in workout history, so it can\'t be deleted.')
+    return redirect('manage_plans')
 
 
 # Manage users/members
@@ -160,11 +298,15 @@ def workout_log(request):
             if chosen:
                 form = WorkoutLogForm(user=request.user, initial={'exercise': chosen.id})
 
+    # The plan's exercises WITH their targets, for the dropdown + pre-fill
+    plan = get_assigned_plan(request.user)
+    plan_entries = plan.plan_exercises.select_related('exercise') if plan else []
+
     # Limits for the date picker, so the browser greys out impossible dates
     today = timezone.localdate()
     return render(request, 'core/workout_log.html', {
         'form': form,
-        'exercises': form.fields['exercise'].queryset,
+        'plan_entries': plan_entries,
         'today': today,
         'oldest_date': today - timedelta(days=MAX_DAYS_BACK),
     })

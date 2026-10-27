@@ -25,7 +25,7 @@
             <h3 class="fw-bold mb-1">Log Workout</h3>
             <p class="text-muted mb-4">Record your session</p>
 
-            {% if exercises %}
+            {% if plan_entries %}
             <div class="row justify-content-start">
                 <div class="col-md-6">
                     <div class="card p-4">
@@ -60,11 +60,11 @@
                             <div class="mb-3">
                                 <label for="id_exercise" class="form-label text-muted">Exercise</label>
                                 <select name="exercise" id="id_exercise" class="form-select bg-dark text-white border-secondary" required>
-                                    {% for ex in exercises %}
-                                    <option value="{{ ex.id }}"
-                                        data-sets="{{ ex.sets }}" data-reps="{{ ex.reps }}"
-                                        {% if form.exercise.value|stringformat:"s" == ex.id|stringformat:"s" %}selected{% endif %}>
-                                        {{ ex.name }} (plan: {{ ex.sets }}x{{ ex.reps }})
+                                    {% for entry in plan_entries %}
+                                    <option value="{{ entry.exercise.id }}"
+                                        data-sets="{{ entry.sets }}" data-reps="{{ entry.reps }}"
+                                        {% if form.exercise.value|stringformat:"s" == entry.exercise.id|stringformat:"s" %}selected{% endif %}>
+                                        {{ entry.exercise.name }} (plan: {{ entry.sets }}x{{ entry.reps }})
                                     </option>
                                     {% endfor %}
                                 </select>

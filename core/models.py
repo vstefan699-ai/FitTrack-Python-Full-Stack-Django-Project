@@ -16,7 +16,7 @@ class WorkoutPlan(models.Model):
         return self.name
 
 
-# An exercise that belongs to a workout plan
+# An exercise in the shared library (used by any number of plans)
 class Exercise(models.Model):
     MUSCLE_GROUPS = [
         ('chest', 'Chest'),
@@ -26,21 +26,46 @@ class Exercise(models.Model):
         ('arms', 'Arms'),
         ('core', 'Core'),
     ]
-    workout_plan = models.ForeignKey(WorkoutPlan, on_delete=models.CASCADE, related_name='exercises')
-    name = models.CharField(max_length=200)
+    name = models.CharField(max_length=200, unique=True)
     muscle_group = models.CharField(max_length=50, choices=MUSCLE_GROUPS)
-    sets = models.IntegerField()
-    reps = models.IntegerField()
     description = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ['muscle_group', 'name']
 
     def __str__(self):
         return self.name
 
 
+# One exercise inside one plan, with that plan's target sets/reps.
+# The same library exercise can appear in many plans with different targets.
+class PlanExercise(models.Model):
+    plan = models.ForeignKey(WorkoutPlan, on_delete=models.CASCADE, related_name='plan_exercises')
+    exercise = models.ForeignKey(Exercise, on_delete=models.PROTECT, related_name='plan_entries')
+    sets = models.PositiveSmallIntegerField(
+        validators=[MinValueValidator(1), MaxValueValidator(20)]
+    )
+    reps = models.PositiveSmallIntegerField(
+        validators=[MinValueValidator(1), MaxValueValidator(100)]
+    )
+    order = models.PositiveSmallIntegerField(default=0)
+
+    class Meta:
+        ordering = ['order', 'id']
+        constraints = [
+            # The same exercise can't be added twice to one plan
+            models.UniqueConstraint(fields=['plan', 'exercise'], name='unique_exercise_per_plan'),
+        ]
+
+    def __str__(self):
+        return f"{self.plan.name}: {self.exercise.name} ({self.sets}x{self.reps})"
+
+
 # A log entry when a user completes an exercise
 class WorkoutLog(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='logs')
-    exercise = models.ForeignKey(Exercise, on_delete=models.CASCADE)
+    # PROTECT: an exercise with workout history can't be deleted
+    exercise = models.ForeignKey(Exercise, on_delete=models.PROTECT)
     # What the member ACTUALLY did (the plan's sets/reps are only the target)
     sets_done = models.PositiveSmallIntegerField(
         validators=[MinValueValidator(1), MaxValueValidator(20)]
@@ -65,6 +90,12 @@ class UserProfile(models.Model):
 
     def __str__(self):
         return f"{self.user.username}'s profile"
+
+# The plan assigned to a member, or None (also safe for users without a profile)
+def get_assigned_plan(user):
+    profile = getattr(user, 'profile', None)
+    return profile.assigned_plan if profile else None
+
 
 # Automatically create a profile when a new user is created
 @receiver(post_save, sender=User)

@@ -1,8 +1,9 @@
 from datetime import timedelta
 
 from django import forms
+from django.db import transaction
 from django.utils import timezone
-from .models import WorkoutLog, Exercise
+from .models import WorkoutLog, WorkoutPlan, Exercise, PlanExercise, get_assigned_plan
 
 # How far back a member may log a workout (catches typos like 1926 instead of 2026)
 MAX_DAYS_BACK = 365
@@ -20,12 +21,9 @@ class WorkoutLogForm(forms.ModelForm):
 
         # Only allow exercises from THIS member's assigned plan.
         # Anything else sent by the browser fails validation.
-        plan = None
-        if user is not None and hasattr(user, 'profile'):
-            plan = user.profile.assigned_plan
-
+        plan = get_assigned_plan(user) if user is not None else None
         if plan:
-            self.fields['exercise'].queryset = plan.exercises.all()
+            self.fields['exercise'].queryset = Exercise.objects.filter(plan_entries__plan=plan)
         else:
             self.fields['exercise'].queryset = Exercise.objects.none()
 
@@ -45,3 +43,103 @@ class WorkoutLogForm(forms.ModelForm):
         if date < today - timedelta(days=MAX_DAYS_BACK):
             raise forms.ValidationError(f"You can only log workouts from the last {MAX_DAYS_BACK} days.")
         return date
+
+
+# Form for adding/editing an exercise in the shared library
+class ExerciseForm(forms.ModelForm):
+    class Meta:
+        model = Exercise
+        fields = ['name', 'muscle_group', 'description']
+
+    def clean_name(self):
+        # Tidy spaces: "  bench   press " -> "bench press"
+        name = ' '.join(self.cleaned_data['name'].split())
+        # Block near-duplicates like "bench press" vs "Bench Press"
+        duplicates = Exercise.objects.filter(name__iexact=name)
+        if self.instance.pk:
+            duplicates = duplicates.exclude(pk=self.instance.pk)  # editing: ignore itself
+        if duplicates.exists():
+            raise forms.ValidationError("This exercise is already in the library.")
+        return name
+
+
+# The "New Plan" / "Edit Plan" builder.
+# Plan name + description come from the model; then, for EVERY library
+# exercise, we add 4 extra fields: a tick box, sets, reps and order.
+class PlanForm(forms.ModelForm):
+    class Meta:
+        model = WorkoutPlan
+        fields = ['name', 'description']
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.library = list(Exercise.objects.all())
+
+        # When editing, look up what's already in the plan
+        current = {}
+        if self.instance.pk:
+            current = {pe.exercise_id: pe for pe in self.instance.plan_exercises.all()}
+
+        for ex in self.library:
+            entry = current.get(ex.id)
+            self.fields[f'use_{ex.id}'] = forms.BooleanField(
+                required=False, initial=entry is not None)
+            self.fields[f'sets_{ex.id}'] = forms.IntegerField(
+                required=False, min_value=1, max_value=20,
+                initial=entry.sets if entry else None)
+            self.fields[f'reps_{ex.id}'] = forms.IntegerField(
+                required=False, min_value=1, max_value=100,
+                initial=entry.reps if entry else None)
+            self.fields[f'order_{ex.id}'] = forms.IntegerField(
+                required=False, min_value=1, max_value=99,
+                initial=entry.order if entry else None)
+
+    def exercise_rows(self):
+        # Groups each exercise with its 4 fields, so the template can loop simply
+        for ex in self.library:
+            yield {
+                'exercise': ex,
+                'use': self[f'use_{ex.id}'],
+                'sets': self[f'sets_{ex.id}'],
+                'reps': self[f'reps_{ex.id}'],
+                'order': self[f'order_{ex.id}'],
+            }
+
+    def clean(self):
+        cleaned = super().clean()
+        self.chosen = []
+        for ex in self.library:
+            if not cleaned.get(f'use_{ex.id}'):
+                continue  # not ticked: ignore whatever is typed in that row
+            for part in ('sets', 'reps'):
+                field = f'{part}_{ex.id}'
+                # Only add "required" if the field doesn't already have an error
+                if cleaned.get(field) is None and field not in self.errors:
+                    self.add_error(field, 'Required')
+            self.chosen.append((
+                ex,
+                cleaned.get(f'sets_{ex.id}'),
+                cleaned.get(f'reps_{ex.id}'),
+                cleaned.get(f'order_{ex.id}'),
+            ))
+        if not self.chosen:
+            raise forms.ValidationError("Tick at least one exercise for this plan.")
+        return cleaned
+
+    def save(self, commit=True):
+        plan = super().save(commit=False)
+
+        # Rows with an order number first (1, 2, 3...), then the rest A-Z
+        rows = sorted(self.chosen, key=lambda r: (r[3] is None, r[3] or 0, r[0].name))
+
+        # atomic = all of this succeeds, or none of it is saved
+        with transaction.atomic():
+            plan.save()
+            # Simplest correct way to "edit" the list: clear it and rebuild it.
+            # Safe because workout logs point at Exercise, not PlanExercise.
+            plan.plan_exercises.all().delete()
+            PlanExercise.objects.bulk_create([
+                PlanExercise(plan=plan, exercise=ex, sets=sets, reps=reps, order=position)
+                for position, (ex, sets, reps, _) in enumerate(rows, start=1)
+            ])
+        return plan

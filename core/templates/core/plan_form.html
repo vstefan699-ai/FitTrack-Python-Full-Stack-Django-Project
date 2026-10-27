@@ -1,0 +1,153 @@
+{% extends 'core/base.html' %}
+
+{% block title %}{% if is_edit %}Edit Plan{% else %}New Plan{% endif %} | FitTrack Pro{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+
+        <!-- Sidebar -->
+        <div class="col-md-2 sidebar p-3">
+            <p class="text-muted small text-uppercase fw-bold px-2 mt-2">Menu</p>
+            <a href="{% url 'admin_dashboard' %}">
+                <i class="fas fa-home me-2"></i> Dashboard
+            </a>
+            <a href="{% url 'manage_plans' %}" class="active">
+                <i class="fas fa-dumbbell me-2"></i> Workout Plans
+            </a>
+            <a href="{% url 'manage_users' %}">
+                <i class="fas fa-users me-2"></i> Members
+            </a>
+        </div>
+
+        <!-- Main content -->
+        <div class="col-md-10 p-4">
+            <a href="{% url 'manage_plans' %}" class="text-muted small text-decoration-none">
+                <i class="fas fa-arrow-left"></i> Back to plans
+            </a>
+            <h3 class="fw-bold mt-2 mb-1">{% if is_edit %}Edit "{{ plan.name }}"{% else %}New Plan{% endif %}</h3>
+            <p class="text-muted mb-4">Name the plan, then tick the exercises and set the targets</p>
+
+            <form method="POST">
+                {% csrf_token %}
+
+                <!-- Errors that don't belong to one field (e.g. nothing ticked) -->
+                {% for error in form.non_field_errors %}
+                <div class="alert py-2" style="background-color: #2d0a0a; border: 1px solid #e63946; color: #ffffff;">
+                    {{ error }}
+                </div>
+                {% endfor %}
+
+                <!-- Plan details -->
+                <div class="card p-4 mb-4">
+                    <div class="mb-3">
+                        <label for="id_name" class="form-label">Plan Name</label>
+                        <input type="text" name="name" id="id_name" maxlength="200"
+                               class="form-control bg-dark text-white border-secondary"
+                               placeholder="e.g. Beginner Full Body"
+                               value="{{ form.name.value|default_if_none:'' }}" required>
+                        {% for error in form.name.errors %}
+                        <div class="text-danger small mt-1">{{ error }}</div>
+                        {% endfor %}
+                    </div>
+                    <div>
+                        <label for="id_description" class="form-label">Description</label>
+                        <textarea name="description" id="id_description" rows="3"
+                                  class="form-control bg-dark text-white border-secondary"
+                                  placeholder="Who is this plan for? What's the goal?"
+                                  required>{{ form.description.value|default_if_none:'' }}</textarea>
+                        {% for error in form.description.errors %}
+                        <div class="text-danger small mt-1">{{ error }}</div>
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <!-- Exercise picker -->
+                <div class="card p-3 mb-4">
+                    <p class="text-muted small text-uppercase fw-bold mb-2">Exercises</p>
+                    <p class="text-muted small">
+                        "Order" is optional: numbered exercises come first, the rest follow A-Z.
+                        Missing an exercise? <a href="{% url 'exercise_create' %}" style="color: #e63946;">Add it to the library</a> first.
+                    </p>
+                    <div class="table-responsive">
+                        <table class="table table-dark table-hover align-middle mb-0">
+                            <thead>
+                                <tr>
+                                    <th style="width: 50px;">Use</th>
+                                    <th>Exercise</th>
+                                    <th style="width: 100px;">Order</th>
+                                    <th style="width: 100px;">Sets</th>
+                                    <th style="width: 100px;">Reps</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for row in form.exercise_rows %}
+                                <tr class="exercise-row">
+                                    <td>
+                                        <input type="checkbox" class="form-check-input use-box"
+                                               name="{{ row.use.html_name }}" id="{{ row.use.id_for_label }}"
+                                               {% if row.use.value %}checked{% endif %}>
+                                    </td>
+                                    <td>
+                                        <label for="{{ row.use.id_for_label }}" class="fw-bold mb-0">{{ row.exercise.name }}</label>
+                                        <span class="badge bg-secondary ms-1">{{ row.exercise.get_muscle_group_display }}</span>
+                                    </td>
+                                    <td>
+                                        <input type="number" name="{{ row.order.html_name }}" min="1" max="99"
+                                               class="form-control form-control-sm row-input"
+                                               value="{{ row.order.value|default_if_none:'' }}">
+                                        {% for error in row.order.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                                    </td>
+                                    <td>
+                                        <input type="number" name="{{ row.sets.html_name }}" min="1" max="20"
+                                               class="form-control form-control-sm row-input"
+                                               value="{{ row.sets.value|default_if_none:'' }}">
+                                        {% for error in row.sets.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                                    </td>
+                                    <td>
+                                        <input type="number" name="{{ row.reps.html_name }}" min="1" max="100"
+                                               class="form-control form-control-sm row-input"
+                                               value="{{ row.reps.value|default_if_none:'' }}">
+                                        {% for error in row.reps.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="d-flex gap-2">
+                    <button type="submit" class="btn btn-danger">
+                        <i class="fas fa-check"></i> {% if is_edit %}Save Changes{% else %}Create Plan{% endif %}
+                    </button>
+                    <a href="{% url 'manage_plans' %}" class="btn btn-outline-light">Cancel</a>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Typing a number in a row ticks that row automatically,
+     and un-ticked rows are dimmed so the chosen ones stand out -->
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    document.querySelectorAll('.exercise-row').forEach(function (row) {
+        const box = row.querySelector('.use-box');
+
+        function updateLook() {
+            row.style.opacity = box.checked ? '1' : '0.55';
+        }
+
+        row.querySelectorAll('.row-input').forEach(function (input) {
+            input.addEventListener('input', function () {
+                if (input.value !== '') box.checked = true;
+                updateLook();
+            });
+        });
+        box.addEventListener('change', updateLook);
+        updateLook();
+    });
+});
+</script>
+{% endblock %}

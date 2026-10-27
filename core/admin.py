@@ -1,10 +1,26 @@
 from django.contrib import admin
-from .models import WorkoutPlan, Exercise, WorkoutLog, UserProfile
+from .models import WorkoutPlan, Exercise, PlanExercise, WorkoutLog, UserProfile
 
-# Register your models here
-admin.site.register(WorkoutPlan)
-admin.site.register(Exercise)
 admin.site.register(UserProfile)
+
+
+# Show a plan's exercises as editable rows inside the plan's admin page
+class PlanExerciseInline(admin.TabularInline):
+    model = PlanExercise
+    extra = 1
+
+
+@admin.register(WorkoutPlan)
+class WorkoutPlanAdmin(admin.ModelAdmin):
+    list_display = ('name', 'created_by', 'created_at')
+    inlines = [PlanExerciseInline]
+
+
+@admin.register(Exercise)
+class ExerciseAdmin(admin.ModelAdmin):
+    list_display = ('name', 'muscle_group')
+    list_filter = ('muscle_group',)
+    search_fields = ('name',)
 
 
 # Show the useful columns in the admin list instead of just "user - exercise"
