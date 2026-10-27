@@ -25,47 +25,97 @@
             <h3 class="fw-bold mb-1">Log Workout</h3>
             <p class="text-muted mb-4">Record your session</p>
 
+            {% if exercises %}
             <div class="row justify-content-start">
                 <div class="col-md-6">
                     <div class="card p-4">
                         <form method="POST">
                             {% csrf_token %}
 
+                            <!-- Errors that don't belong to one field -->
+                            {% for error in form.non_field_errors %}
+                            <div class="text-danger small mb-2">{{ error }}</div>
+                            {% endfor %}
+
                             <!-- Exercise selector -->
                             <div class="mb-3">
-                                <label class="form-label text-muted">Exercise</label>
-                                <select name="exercise" class="form-select bg-dark text-white border-secondary">
+                                <label for="id_exercise" class="form-label text-muted">Exercise</label>
+                                <select name="exercise" id="id_exercise" class="form-select bg-dark text-white border-secondary" required>
                                     {% for ex in exercises %}
                                     <option value="{{ ex.id }}"
-                                        {% if exercise and exercise.id == ex.id %}selected{% endif %}>
-                                        {{ ex.name }} ({{ ex.sets }}x{{ ex.reps }})
+                                        data-sets="{{ ex.sets }}" data-reps="{{ ex.reps }}"
+                                        {% if form.exercise.value|stringformat:"s" == ex.id|stringformat:"s" %}selected{% endif %}>
+                                        {{ ex.name }} (plan: {{ ex.sets }}x{{ ex.reps }})
                                     </option>
                                     {% endfor %}
                                 </select>
+                                {% for error in form.exercise.errors %}
+                                <div class="text-danger small mt-1">{{ error }}</div>
+                                {% endfor %}
+                            </div>
+
+                            <!-- Sets and reps actually done (side by side) -->
+                            <div class="row">
+                                <div class="col-6 mb-3">
+                                    <label for="id_sets_done" class="form-label text-muted">Sets Done</label>
+                                    <input
+                                        type="number"
+                                        name="sets_done"
+                                        id="id_sets_done"
+                                        class="form-control bg-dark text-white border-secondary"
+                                        min="1" max="20" step="1"
+                                        value="{{ form.sets_done.value|default_if_none:'' }}"
+                                        required
+                                    >
+                                    {% for error in form.sets_done.errors %}
+                                    <div class="text-danger small mt-1">{{ error }}</div>
+                                    {% endfor %}
+                                </div>
+                                <div class="col-6 mb-3">
+                                    <label for="id_reps_done" class="form-label text-muted">Reps per Set</label>
+                                    <input
+                                        type="number"
+                                        name="reps_done"
+                                        id="id_reps_done"
+                                        class="form-control bg-dark text-white border-secondary"
+                                        min="1" max="100" step="1"
+                                        value="{{ form.reps_done.value|default_if_none:'' }}"
+                                        required
+                                    >
+                                    {% for error in form.reps_done.errors %}
+                                    <div class="text-danger small mt-1">{{ error }}</div>
+                                    {% endfor %}
+                                </div>
                             </div>
 
                             <!-- Weight -->
                             <div class="mb-3">
-                                <label class="form-label text-muted">Weight Used (kg)</label>
-                                <input 
-                                    type="number" 
-                                    name="weight" 
+                                <label for="id_weight_used" class="form-label text-muted">Weight Used (kg)</label>
+                                <input
+                                    type="number"
+                                    name="weight_used"
+                                    id="id_weight_used"
                                     class="form-control bg-dark text-white border-secondary"
                                     placeholder="e.g. 60"
-                                    step="0.5"
+                                    min="0" max="500" step="0.5"
+                                    value="{{ form.weight_used.value|default_if_none:'' }}"
                                     required
                                 >
+                                {% for error in form.weight_used.errors %}
+                                <div class="text-danger small mt-1">{{ error }}</div>
+                                {% endfor %}
                             </div>
 
                             <!-- Notes -->
                             <div class="mb-3">
-                                <label class="form-label text-muted">Notes (optional)</label>
-                                <textarea 
-                                    name="notes" 
+                                <label for="id_notes" class="form-label text-muted">Notes (optional)</label>
+                                <textarea
+                                    name="notes"
+                                    id="id_notes"
                                     class="form-control bg-dark text-white border-secondary"
                                     rows="3"
                                     placeholder="How did it feel? Any observations..."
-                                ></textarea>
+                                >{{ form.notes.value|default_if_none:'' }}</textarea>
                             </div>
 
                             <button type="submit" class="btn btn-danger w-100">
@@ -75,7 +125,38 @@
                     </div>
                 </div>
             </div>
+            {% else %}
+            <!-- No plan assigned, so there is nothing to log yet -->
+            <div class="card p-5 text-center">
+                <i class="fas fa-dumbbell fa-3x mb-3" style="color: #e63946;"></i>
+                <h5 class="fw-bold">No Program Assigned Yet</h5>
+                <p class="text-muted">Your coach needs to assign you a plan before you can log workouts.</p>
+            </div>
+            {% endif %}
         </div>
     </div>
 </div>
+
+<!-- Pre-fill sets/reps with the plan's target, so the member only
+     changes them if they did something different -->
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const select = document.getElementById('id_exercise');
+    const sets = document.getElementById('id_sets_done');
+    const reps = document.getElementById('id_reps_done');
+    if (!select) return;  // no plan assigned = no form on the page
+
+    function fillTargets(overwrite) {
+        const option = select.options[select.selectedIndex];
+        if (!option) return;
+        // Only overwrite when the exercise changes; on page load keep
+        // whatever is already there (e.g. after a validation error)
+        if (overwrite || sets.value === '') sets.value = option.dataset.sets;
+        if (overwrite || reps.value === '') reps.value = option.dataset.reps;
+    }
+
+    fillTargets(false);
+    select.addEventListener('change', function () { fillTargets(true); });
+});
+</script>
 {% endblock %}

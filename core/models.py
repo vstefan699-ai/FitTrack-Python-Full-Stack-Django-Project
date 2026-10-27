@@ -1,5 +1,6 @@
 from django.db import models
 from django.contrib.auth.models import User
+from django.core.validators import MinValueValidator, MaxValueValidator
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 
@@ -39,14 +40,23 @@ class Exercise(models.Model):
 class WorkoutLog(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='logs')
     exercise = models.ForeignKey(Exercise, on_delete=models.CASCADE)
+    # What the member ACTUALLY did (the plan's sets/reps are only the target)
+    sets_done = models.PositiveSmallIntegerField(
+        validators=[MinValueValidator(1), MaxValueValidator(20)]
+    )
+    reps_done = models.PositiveSmallIntegerField(
+        validators=[MinValueValidator(1), MaxValueValidator(100)],
+        help_text="Reps per set"
+    )
     weight_used = models.FloatField()
     completed_on = models.DateField(auto_now_add=True)
     notes = models.TextField(blank=True)
 
     def __str__(self):
         return f"{self.user.username} - {self.exercise.name}"
-    
-    # Extra information linked to each user
+
+
+# Extra information linked to each user
 class UserProfile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile')
     assigned_plan = models.ForeignKey(WorkoutPlan, on_delete=models.SET_NULL, null=True, blank=True)

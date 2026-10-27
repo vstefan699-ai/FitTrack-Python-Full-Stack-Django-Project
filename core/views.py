@@ -4,6 +4,7 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.contrib import messages
 from .models import WorkoutPlan, Exercise, WorkoutLog
+from .forms import WorkoutLogForm
 
 # Login view
 def login_view(request):
@@ -133,37 +134,33 @@ def manage_users(request):
 def workout_log(request):
     if request.user.is_staff:
         return redirect('admin_dashboard')
-    
-    # Get the exercise from the URL query parameter
-    exercise_id = request.GET.get('exercise')
-    exercise = None
-    
-    if exercise_id:
-        exercise = Exercise.objects.get(id=exercise_id)
-    
+
     if request.method == 'POST':
-        exercise_id = request.POST['exercise']
-        weight = request.POST['weight']
-        notes = request.POST.get('notes', '')
-        exercise_obj = Exercise.objects.get(id=exercise_id)
-        
-        WorkoutLog.objects.create(
-            user=request.user,
-            exercise=exercise_obj,
-            weight_used=weight,
-            notes=notes
-        )
-        messages.success(request, 'Workout logged successfully!')
-        return redirect('user_dashboard')
-    
-    # Get exercises from user's assigned plan
-    exercises = []
-    if request.user.profile.assigned_plan:
-        exercises = request.user.profile.assigned_plan.exercises.all()
-    
+        # Fill the form with what the member submitted, then validate it
+        form = WorkoutLogForm(request.POST, user=request.user)
+        if form.is_valid():
+            # commit=False: build the log but don't save yet,
+            # because the form doesn't know WHO is logging
+            log = form.save(commit=False)
+            log.user = request.user
+            log.save()
+            messages.success(request, 'Workout logged successfully!')
+            return redirect('user_dashboard')
+        # Not valid: fall through and show the form again WITH the errors
+        messages.error(request, 'Please fix the errors below.')
+    else:
+        # GET: an empty form, with the exercise pre-selected if the member
+        # clicked "Log This" on the dashboard (?exercise=5 in the URL)
+        form = WorkoutLogForm(user=request.user)
+        exercise_id = request.GET.get('exercise', '')
+        if exercise_id.isdigit():
+            chosen = form.fields['exercise'].queryset.filter(id=exercise_id).first()
+            if chosen:
+                form = WorkoutLogForm(user=request.user, initial={'exercise': chosen.id})
+
     return render(request, 'core/workout_log.html', {
-        'exercise': exercise,
-        'exercises': exercises,
+        'form': form,
+        'exercises': form.fields['exercise'].queryset,
     })
 
 
@@ -173,7 +170,10 @@ def my_progress(request):
     if request.user.is_staff:
         return redirect('admin_dashboard')
     
-    logs = WorkoutLog.objects.filter(user=request.user).order_by('-completed_on')
+    # select_related loads each log's exercise in the SAME database query
+    logs = (WorkoutLog.objects.filter(user=request.user)
+            .select_related('exercise')
+            .order_by('-completed_on'))
     
     return render(request, 'core/my_progress.html', {
         'logs': logs,

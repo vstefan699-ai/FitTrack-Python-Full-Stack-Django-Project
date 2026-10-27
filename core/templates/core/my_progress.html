@@ -49,7 +49,7 @@
                                 </span>
                             </td>
                             <td>{{ log.weight_used }} kg</td>
-                            <td>{{ log.exercise.sets }}x{{ log.exercise.reps }}</td>
+                            <td>{{ log.sets_done }}x{{ log.reps_done }}</td>
                             <td class="text-muted small">{{ log.notes|default:"—" }}</td>
                             <td class="text-muted">{{ log.completed_on|date:"d M Y" }}</td>
                         </tr>
