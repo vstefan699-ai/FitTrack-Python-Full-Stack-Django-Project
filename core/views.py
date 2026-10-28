@@ -3,7 +3,7 @@ from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.contrib import messages
-from django.db.models import Count, ProtectedError
+from django.db.models import Count, Max, ProtectedError
 from django.views.decorators.http import require_POST
 from django.utils import timezone
 from datetime import timedelta
@@ -312,7 +312,7 @@ def workout_log(request):
     })
 
 
-# My progress page
+# My progress page: weight chart for one exercise + full workout history
 @login_required(login_url='login')
 def my_progress(request):
     if request.user.is_staff:
@@ -323,8 +323,48 @@ def my_progress(request):
             .select_related('exercise')
             .order_by('-completed_on', '-id'))  # newest date first; same date = newest entry first
     
+    # Only exercises THIS member has logged, for the chart dropdown.
+    # distinct(): without it, an exercise logged 10 times would be listed 10 times
+    logged_exercises = Exercise.objects.filter(workoutlog__user=request.user).distinct()
+    
+    # Which exercise to chart: ?exercise=5 in the URL if it's one they logged,
+    # otherwise the exercise from their most recent log
+    selected = None
+    exercise_id = request.GET.get('exercise', '')
+    if exercise_id.isdigit():
+        selected = logged_exercises.filter(id=exercise_id).first()
+    if selected is None:
+        latest_log = logs.first()
+        selected = latest_log.exercise if latest_log else None
+    
+    chart_data = None
+    best_weight = None
+    weight_change = None
+    session_count = 0
+    if selected:
+        # One point per day: the HEAVIEST weight used for this exercise that day.
+        # values() + annotate() = GROUP BY completed_on in the database.
+        # list() runs the query once, so we can loop over the rows twice for free.
+        rows = list(WorkoutLog.objects.filter(user=request.user, exercise=selected)
+                    .values('completed_on')
+                    .annotate(top_weight=Max('weight_used'))
+                    .order_by('completed_on'))  # oldest first, so the line reads left to right
+        labels = [row['completed_on'].strftime('%d %b %Y') for row in rows]
+        weights = [row['top_weight'] for row in rows]
+        chart_data = {'exercise': selected.name, 'labels': labels, 'weights': weights}
+        session_count = len(rows)
+        best_weight = max(weights)
+        # round(): floats can give 2.4999999 instead of 2.5
+        weight_change = round(weights[-1] - weights[0], 2)
+    
     return render(request, 'core/my_progress.html', {
         'logs': logs,
+        'logged_exercises': logged_exercises,
+        'selected': selected,
+        'chart_data': chart_data,
+        'best_weight': best_weight,
+        'weight_change': weight_change,
+        'session_count': session_count,
     })
 
 # Assign a plan to a user

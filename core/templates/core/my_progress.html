@@ -23,9 +23,83 @@
         <!-- Main content -->
         <div class="col-md-10 p-4">
             <h3 class="fw-bold mb-1">My Progress</h3>
-            <p class="text-muted mb-4">Your workout history</p>
+            <p class="text-muted mb-4">Your strength over time and your workout history</p>
 
+            {% if chart_data %}
+            <!-- Progress chart card -->
+            <div class="card p-3 mb-4">
+                <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+                    <h5 class="fw-bold mb-0">
+                        <i class="fas fa-chart-line me-2" style="color: #e63946;"></i>Weight Progress
+                    </h5>
+
+                    <!-- GET form: picking an exercise reloads the page as /my-progress/?exercise=5 -->
+                    <form method="get" class="d-flex align-items-center gap-2">
+                        <label for="exercise-select" class="form-label mb-0">Exercise</label>
+                        <select id="exercise-select" name="exercise" class="form-select form-select-sm w-auto"
+                                onchange="this.form.submit()">
+                            {% for ex in logged_exercises %}
+                            <option value="{{ ex.id }}" {% if ex.id == selected.id %}selected{% endif %}>
+                                {{ ex.name }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                        <!-- Only shows if JavaScript is switched off -->
+                        <noscript><button type="submit" class="btn btn-danger btn-sm">Show</button></noscript>
+                    </form>
+                </div>
+
+                <!-- Quick stats for the selected exercise -->
+                <div class="row g-3 mb-3">
+                    <div class="col-md-4">
+                        <div class="card stat-card p-3">
+                            <p class="mb-1 small">Best Weight</p>
+                            <h3 class="fw-bold mb-0">{{ best_weight|floatformat:"-2" }} kg</h3>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card stat-card p-3">
+                            <p class="mb-1 small">Change Since First Session</p>
+                            <h3 class="fw-bold mb-0">
+                                {% if session_count > 1 %}
+                                    {% if weight_change > 0 %}+{% endif %}{{ weight_change|floatformat:"-2" }} kg
+                                {% else %}
+                                    —
+                                {% endif %}
+                            </h3>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card stat-card p-3">
+                            <p class="mb-1 small">Training Days Logged</p>
+                            <h3 class="fw-bold mb-0">{{ session_count }}</h3>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- The chart draws itself into this canvas. A fixed-height wrapper
+                     stops Chart.js from growing the page forever on resize. -->
+                <div style="position: relative; height: 320px;">
+                    <canvas id="weightChart"></canvas>
+                </div>
+
+                {% if session_count == 1 %}
+                <p class="text-muted small mt-2 mb-0">
+                    <i class="fas fa-circle-info me-1"></i>
+                    Log this exercise on another day to see your trend line.
+                </p>
+                {% endif %}
+
+                <!-- Hands the chart data to JavaScript safely (escaped JSON in a script tag) -->
+                {{ chart_data|json_script:"chart-data" }}
+            </div>
+            {% endif %}
+
+            <!-- Workout history table -->
             <div class="card p-3">
+                <h5 class="fw-bold mb-3">
+                    <i class="fas fa-list me-2" style="color: #e63946;"></i>Workout History
+                </h5>
                 <table class="table table-dark table-hover">
                     <thead>
                         <tr>
@@ -68,4 +142,53 @@
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+{% if chart_data %}
+<!-- Chart.js, pinned to an exact version so an update can never break the page -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+    // 1. Read the data Django put in the <script id="chart-data"> tag
+    const progress = JSON.parse(document.getElementById('chart-data').textContent);
+
+    // 2. Match the dark theme: grey text, dark grid lines
+    Chart.defaults.color = '#aaaaaa';
+    Chart.defaults.borderColor = '#2a2a2a';
+
+    // 3. Draw the line chart
+    new Chart(document.getElementById('weightChart'), {
+        type: 'line',
+        data: {
+            labels: progress.labels,              // dates along the bottom
+            datasets: [{
+                label: progress.exercise,
+                data: progress.weights,           // top weight per day
+                borderColor: '#e63946',
+                backgroundColor: '#e63946',
+                pointRadius: 5,
+                pointHoverRadius: 7,
+                tension: 0.2                      // slight curve between points
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,           // use the 320px wrapper height
+            plugins: {
+                legend: { display: false },       // the dropdown already names the exercise
+                tooltip: {
+                    callbacks: {
+                        label: (ctx) => ' ' + ctx.parsed.y + ' kg'
+                    }
+                }
+            },
+            scales: {
+                y: {
+                    title: { display: true, text: 'Top weight (kg)' }
+                }
+            }
+        }
+    });
+</script>
+{% endif %}
 {% endblock %}
