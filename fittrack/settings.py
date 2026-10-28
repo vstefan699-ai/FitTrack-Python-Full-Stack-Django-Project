@@ -89,6 +89,9 @@ USE_TZ = True
 # Static files
 STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
-STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+# Vercel never runs "collectstatic" (vercel.json only builds wsgi.py), so let
+# WhiteNoise serve static files straight from each app's own static folder
+# (e.g. Django admin's CSS inside the installed django package).
+WHITENOISE_USE_FINDERS = True
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
