@@ -1,0 +1,31 @@
+{% comment %}
+    Trainer (staff) sidebar, included by every admin-side page.
+
+    "current" = the name of the URL pattern that served this page
+    (the same names used in {% url %} tags). Matching on the name instead
+    of the raw path means renaming a URL in urls.py can't break the highlight.
+
+    Workout Plans stays highlighted on its sub-pages too
+    (new/edit plan, add/edit exercise), so the trainer always knows
+    which section they're in.
+{% endcomment %}
+{% with current=request.resolver_match.url_name %}
+<div class="col-md-2 sidebar p-3">
+    <p class="text-muted small text-uppercase fw-bold px-2 mt-2">Menu</p>
+
+    <a href="{% url 'admin_dashboard' %}"
+       class="{% if current == 'admin_dashboard' %}active{% endif %}">
+        <i class="fas fa-home me-2"></i> Dashboard
+    </a>
+
+    <a href="{% url 'manage_plans' %}"
+       class="{% if current == 'manage_plans' or current == 'plan_create' or current == 'plan_edit' or current == 'exercise_create' or current == 'exercise_edit' %}active{% endif %}">
+        <i class="fas fa-dumbbell me-2"></i> Workout Plans
+    </a>
+
+    <a href="{% url 'manage_users' %}"
+       class="{% if current == 'manage_users' %}active{% endif %}">
+        <i class="fas fa-users me-2"></i> Members
+    </a>
+</div>
+{% endwith %}

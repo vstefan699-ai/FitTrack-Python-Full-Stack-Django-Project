@@ -6,19 +6,8 @@
 <div class="container-fluid">
     <div class="row">
 
-        <!-- Sidebar -->
-        <div class="col-md-2 sidebar p-3">
-            <p class="text-muted small text-uppercase fw-bold px-2 mt-2">Menu</p>
-            <a href="{% url 'admin_dashboard' %}" class="{% if request.path == '/admin-dashboard/' %}active{% endif %}">
-                <i class="fas fa-home me-2"></i> Dashboard
-            </a>
-            <a href="{% url 'manage_plans' %}" class="{% if request.path == '/manage-plans/' %}active{% endif %}">
-                <i class="fas fa-dumbbell me-2"></i> Workout Plans
-            </a>
-            <a href="{% url 'manage_users' %}" class="{% if request.path == '/manage-users/' %}active{% endif %}">
-                <i class="fas fa-users me-2"></i> Members
-            </a>
-        </div>
+        {# Sidebar: shared file core/partials/sidebar_trainer.html #}
+        {% include 'core/partials/sidebar_trainer.html' %}
 
         <!-- Main content -->
         <div class="col-md-10 p-4">
