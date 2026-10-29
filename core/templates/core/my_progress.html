@@ -84,48 +84,50 @@
             </div>
             {% endif %}
 
-            <!-- Workout history table -->
+            <!-- Workout history table (table-responsive = scrolls sideways on phones) -->
             <div class="card p-3">
                 <h5 class="fw-bold mb-3">
                     <i class="fas fa-list me-2" style="color: #e63946;"></i>Workout History
                 </h5>
-                <table class="table table-dark table-hover">
-                    <thead>
-                        <tr>
-                            <th>Exercise</th>
-                            <th>Muscle Group</th>
-                            <th>Weight Used</th>
-                            <th>Sets x Reps</th>
-                            <th>Notes</th>
-                            <th>Date</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for log in logs %}
-                        <tr>
-                            <td class="fw-bold" style="color: #e63946;">
-                                {{ log.exercise.name }}
-                            </td>
-                            <td>
-                                <span class="badge bg-secondary">
-                                    {{ log.exercise.get_muscle_group_display }}
-                                </span>
-                            </td>
-                            <td>{{ log.weight_used }} kg</td>
-                            <td>{{ log.sets_done }}x{{ log.reps_done }}</td>
-                            <td class="text-muted small">{{ log.notes|default:"—" }}</td>
-                            <td class="text-muted">{{ log.completed_on|date:"d M Y" }}</td>
-                        </tr>
-                        {% empty %}
-                        <tr>
-                            <td colspan="6" class="text-center text-muted py-4">
-                                <i class="fas fa-dumbbell fa-2x mb-2 d-block" style="color: #e63946;"></i>
-                                No workouts logged yet. Start training!
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
+                <div class="table-responsive">
+                    <table class="table table-dark table-hover">
+                        <thead>
+                            <tr>
+                                <th>Exercise</th>
+                                <th>Muscle Group</th>
+                                <th>Weight Used</th>
+                                <th>Sets x Reps</th>
+                                <th>Notes</th>
+                                <th>Date</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for log in logs %}
+                            <tr>
+                                <td class="fw-bold" style="color: #e63946;">
+                                    {{ log.exercise.name }}
+                                </td>
+                                <td>
+                                    <span class="badge bg-secondary">
+                                        {{ log.exercise.get_muscle_group_display }}
+                                    </span>
+                                </td>
+                                <td>{{ log.weight_used }} kg</td>
+                                <td>{{ log.sets_done }}x{{ log.reps_done }}</td>
+                                <td class="text-muted small">{{ log.notes|default:"—" }}</td>
+                                <td class="text-muted">{{ log.completed_on|date:"d M Y" }}</td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="6" class="text-center text-muted py-4">
+                                    <i class="fas fa-dumbbell fa-2x mb-2 d-block" style="color: #e63946;"></i>
+                                    No workouts logged yet. Start training!
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
             </div>
 
         </div>

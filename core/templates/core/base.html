@@ -57,14 +57,6 @@
             background-color: #e63946;
             color: #ffffff;
         }
-        .sidebar .menu-label {
-            color: #aaaaaa;
-            font-size: 0.75rem;
-            text-transform: uppercase;
-            font-weight: 700;
-            padding: 0 20px;
-            margin-top: 8px;
-        }
         .sidebar a.active {
             background-color: #e63946;
             color: #ffffff;
@@ -124,7 +116,38 @@
         .flash-error i {
             color: #e63946;
         }
-</style>
+
+        /* ===== Phones & small tablets =====
+           767.98px = just below Bootstrap's "md" breakpoint (768px), which is
+           exactly where col-md-2 stops being a side column and stacks on top.
+           Nothing in here touches the desktop layout. */
+        @media (max-width: 767.98px) {
+            /* Slightly smaller brand so it fits beside the username + Logout */
+            .navbar-brand {
+                font-size: 1.2rem;
+            }
+            /* Sidebar becomes a horizontal menu bar under the navbar */
+            .sidebar {
+                min-height: auto;              /* no more full-screen-tall sidebar */
+                display: flex;                 /* links sit side by side */
+                gap: 6px;
+                overflow-x: auto;              /* if it ever gets too wide, it swipes */
+                padding: 8px !important;       /* beats Bootstrap's p-3, which uses !important */
+                border-right: none;
+                border-bottom: 2px solid #2a2a2a;
+            }
+            /* The "MENU" label is pointless in a one-row bar */
+            .sidebar > p {
+                display: none;
+            }
+            .sidebar a {
+                flex: 0 0 auto;                /* keep each button its natural width */
+                white-space: nowrap;           /* "Log Workout" never splits into two lines */
+                margin: 0;
+                padding: 8px 14px;
+            }
+        }
+    </style>
 </head>
 <body>
 
