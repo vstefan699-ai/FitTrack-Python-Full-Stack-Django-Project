@@ -1,5 +1,6 @@
 from pathlib import Path
 import os
+import sys
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
@@ -7,8 +8,15 @@ load_dotenv()
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+# True only while "python manage.py test" is running.
+# sys.argv is the command you typed: ['manage.py', 'test', 'core', ...]
+TESTING = len(sys.argv) > 1 and sys.argv[1] == 'test'
+
 # Security
 SECRET_KEY = os.getenv('SECRET_KEY')
+# Lets tests run on a machine with no .env file (e.g. GitHub Actions later)
+if TESTING and not SECRET_KEY:
+    SECRET_KEY = 'tests-only-not-a-real-secret'
 DEBUG = os.getenv('DEBUG', 'False') == 'True'
 
 ALLOWED_HOSTS = ['*']
@@ -71,6 +79,17 @@ else:
         }
     }
 
+# Tests ALWAYS use a throwaway in-memory SQLite database.
+# This sits AFTER the block above on purpose so it wins over DATABASE_URL -
+# even in a terminal where the production URL was pasted for migrations.
+if TESTING:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': ':memory:',
+        }
+    }
+
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
@@ -78,6 +97,11 @@ AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator'},
     {'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator'},
 ]
+
+if TESTING:
+    # Real password hashing is deliberately SLOW (to frustrate password crackers).
+    # Tests create lots of users, so use a fast, weak hasher - tests only!
+    PASSWORD_HASHERS = ['django.contrib.auth.hashers.MD5PasswordHasher']
 
 # Internationalization
 LANGUAGE_CODE = 'en-us'

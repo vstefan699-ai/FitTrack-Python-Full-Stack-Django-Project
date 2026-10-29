@@ -7,7 +7,7 @@ from django.db.models import Count, Max, ProtectedError
 from django.views.decorators.http import require_POST
 from django.utils import timezone
 from datetime import timedelta
-from .models import WorkoutPlan, Exercise, WorkoutLog, get_assigned_plan
+from .models import WorkoutPlan, Exercise, WorkoutLog, UserProfile, get_assigned_plan
 from .forms import WorkoutLogForm, ExerciseForm, PlanForm, MAX_DAYS_BACK
 
 # Login view
@@ -367,23 +367,31 @@ def my_progress(request):
         'session_count': session_count,
     })
 
-# Assign a plan to a user
+# Assign a plan to a member (POST only - it changes data)
 @login_required(login_url='login')
+@require_POST
 def assign_plan(request, user_id):
     if not request.user.is_staff:
         return redirect('user_dashboard')
-    
-    if request.method == 'POST':
-        plan_id = request.POST['plan_id']
-        member = User.objects.get(id=user_id)
-        plan = WorkoutPlan.objects.get(id=plan_id)
-        
-        # Update the member's profile
-        member.profile.assigned_plan = plan
-        member.profile.save()
-        
-        messages.success(request, f'Plan assigned to {member.username} successfully!')
-    
+
+    # is_staff=False: plans are for members only, never for trainers.
+    # get_object_or_404: a bad id shows the 404 page instead of crashing (500).
+    member = get_object_or_404(User, id=user_id, is_staff=False)
+
+    # .get() instead of ['plan_id']: a missing field can't crash the view.
+    # isdigit(): '' or 'abc' would make the database lookup crash with ValueError.
+    plan_id = request.POST.get('plan_id', '')
+    if not plan_id.isdigit():
+        messages.error(request, f'Please choose a plan for {member.username} first.')
+        return redirect('manage_users')
+    plan = get_object_or_404(WorkoutPlan, id=plan_id)
+
+    # get_or_create: also works for old accounts made before the profile signal existed
+    profile, _ = UserProfile.objects.get_or_create(user=member)
+    profile.assigned_plan = plan
+    profile.save()
+
+    messages.success(request, f'Plan assigned to {member.username} successfully!')
     return redirect('manage_users')
 
 def landing(request):
