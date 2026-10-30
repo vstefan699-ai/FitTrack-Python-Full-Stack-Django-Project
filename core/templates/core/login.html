@@ -18,33 +18,58 @@
             <div class="card p-4">
                 <form method="POST">
                     {% csrf_token %}
+
+                    <!-- Errors that belong to the whole form, e.g. "Invalid username or password." -->
+                    {% if form.non_field_errors %}
+                    <div class="alert alert-danger py-2 small" role="alert">
+                        {% for error in form.non_field_errors %}
+                            <div>{{ error }}</div>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+
                     <div class="mb-3">
-                        <label class="form-label text-muted">Username</label>
-                        <input 
-                            type="text" 
-                            name="username" 
-                            class="form-control bg-dark text-white border-secondary" 
+                        <label for="id_username" class="form-label text-muted">Username</label>
+                        <!-- value=: keep what they typed if the login fails -->
+                        <input
+                            type="text"
+                            name="username"
+                            id="id_username"
+                            class="form-control bg-dark text-white {% if form.username.errors %}border-danger is-invalid{% else %}border-secondary{% endif %}"
                             placeholder="Enter username"
+                            value="{{ form.username.value|default_if_none:'' }}"
+                            maxlength="150"
+                            autocomplete="username"
+                            autofocus
                             required
                         >
+                        {% for error in form.username.errors %}
+                            <div class="invalid-feedback">{{ error }}</div>
+                        {% endfor %}
                     </div>
                     <div class="mb-3">
-                        <label class="form-label text-muted">Password</label>
-                        <input 
-                            type="password" 
-                            name="password" 
-                            class="form-control bg-dark text-white border-secondary" 
+                        <label for="id_password" class="form-label text-muted">Password</label>
+                        <!-- No value= here on purpose: a password is never sent back to the browser -->
+                        <input
+                            type="password"
+                            name="password"
+                            id="id_password"
+                            class="form-control bg-dark text-white {% if form.password.errors %}border-danger is-invalid{% else %}border-secondary{% endif %}"
                             placeholder="Enter password"
+                            autocomplete="current-password"
                             required
                         >
+                        {% for error in form.password.errors %}
+                            <div class="invalid-feedback">{{ error }}</div>
+                        {% endfor %}
                     </div>
                     <button type="submit" class="btn btn-danger w-100 mt-2">
                         <i class="fas fa-sign-in-alt"></i> Sign In
                     </button>
-                        <p class="text-center text-muted mt-3 small">
-                            Don't have an account? 
-                            <a href="{% url 'register' %}" style="color: #e63946;">Sign up here</a>
-                        </p>
+                    <p class="text-center text-muted mt-3 small">
+                        Don't have an account?
+                        <a href="{% url 'register' %}" style="color: #e63946;">Sign up here</a>
+                    </p>
                 </form>
             </div>
 

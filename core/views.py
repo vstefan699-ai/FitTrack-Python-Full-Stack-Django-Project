@@ -1,5 +1,5 @@
 from django.shortcuts import render, redirect, get_object_or_404
-from django.contrib.auth import authenticate, login, logout
+from django.contrib.auth import login, logout
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.contrib import messages
@@ -8,72 +8,59 @@ from django.views.decorators.http import require_POST
 from django.utils import timezone
 from datetime import timedelta
 from .models import WorkoutPlan, Exercise, WorkoutLog, UserProfile, get_assigned_plan
-from .forms import WorkoutLogForm, ExerciseForm, PlanForm, MAX_DAYS_BACK
+from .forms import WorkoutLogForm, ExerciseForm, PlanForm, RegisterForm, LoginForm, MAX_DAYS_BACK
+
+# Where a logged-in user belongs: trainers to the trainer dashboard, members to theirs.
+# One helper instead of the same 3 lines copied into login, register and landing.
+def redirect_to_dashboard(user):
+    if user.is_staff:
+        return redirect('admin_dashboard')
+    return redirect('user_dashboard')
+
 
 # Login view
 def login_view(request):
-    # If the user is already logged in, redirect them
+    # Already logged in? Skip the form.
     if request.user.is_authenticated:
-        if request.user.is_staff:
-            return redirect('admin_dashboard')
-        return redirect('user_dashboard')
-    
+        return redirect_to_dashboard(request.user)
+
     if request.method == 'POST':
-        # Grab the username and password from the form
-        username = request.POST['username']
-        password = request.POST['password']
-        
-        # Check if credentials are correct
-        user = authenticate(request, username=username, password=password)
-        
-        if user is not None:
+        # LoginForm needs the request (authenticate() uses it) and the POST data.
+        # A missing or blank field becomes a form error - never a KeyError (500).
+        form = LoginForm(request, data=request.POST)
+        if form.is_valid():
+            # is_valid() already checked the password, so get_user() is the real user
+            user = form.get_user()
             login(request, user)
-            # Send them to the right dashboard based on role
-            if user.is_staff:
-                return redirect('admin_dashboard')
-            return redirect('user_dashboard')
-        else:
-            messages.error(request, 'Invalid username or password')
-    
-    return render(request, 'core/login.html')
+            return redirect_to_dashboard(user)
+        # Not valid: fall through and show the page again WITH the errors
+    else:
+        form = LoginForm(request)
+
+    return render(request, 'core/login.html', {'form': form})
 
 
 # Register view
 def register_view(request):
     if request.user.is_authenticated:
-        if request.user.is_staff:
-            return redirect('admin_dashboard')
-        return redirect('user_dashboard')
-    
+        return redirect_to_dashboard(request.user)
+
     if request.method == 'POST':
-        username = request.POST['username']
-        email = request.POST['email']
-        password1 = request.POST['password1']
-        password2 = request.POST['password2']
-        
-        # Check passwords match
-        if password1 != password2:
-            messages.error(request, 'Passwords do not match.')
-            return redirect('register')
-        
-        # Check username isn't taken
-        if User.objects.filter(username=username).exists():
-            messages.error(request, 'Username already taken.')
-            return redirect('register')
-        
-        # Create the user
-        user = User.objects.create_user(
-            username=username,
-            email=email,
-            password=password1
-        )
-        
-        # Log them in automatically
-        login(request, user)
-        messages.success(request, f'Welcome to FitTrack Pro, {username}!')
-        return redirect('user_dashboard')
-    
-    return render(request, 'core/register.html')
+        form = RegisterForm(request.POST)
+        if form.is_valid():
+            # save() creates the user with a HASHED password.
+            # Only username/email/password are read from the POST,
+            # so nobody can sneak in is_staff=on and become a trainer.
+            user = form.save()
+            login(request, user)
+            messages.success(request, f'Welcome to FitTrack Pro, {user.username}!')
+            return redirect('user_dashboard')
+        # Not valid: show the page again - errors under the fields,
+        # username + email kept, passwords cleared (they're never sent back)
+    else:
+        form = RegisterForm()
+
+    return render(request, 'core/register.html', {'form': form})
 
 
 # Logout view
@@ -396,9 +383,7 @@ def assign_plan(request, user_id):
 
 def landing(request):
     if request.user.is_authenticated:
-        if request.user.is_staff:
-            return redirect('admin_dashboard')
-        return redirect('user_dashboard')
+        return redirect_to_dashboard(request.user)
     return render(request, 'core/landing.html')
 
 def custom_404(request, exception):

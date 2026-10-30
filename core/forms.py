@@ -1,6 +1,8 @@
 from datetime import timedelta
 
 from django import forms
+from django.contrib.auth.forms import AuthenticationForm, UserCreationForm
+from django.contrib.auth.models import User
 from django.db import transaction
 from django.utils import timezone
 from .models import WorkoutLog, WorkoutPlan, Exercise, PlanExercise, get_assigned_plan
@@ -8,6 +10,40 @@ from .models import WorkoutLog, WorkoutPlan, Exercise, PlanExercise, get_assigne
 # How far back a member may log a workout (catches typos like 1926 instead of 2026)
 MAX_DAYS_BACK = 365
 
+
+# ---- Accounts: register + login ------------------------------------------
+
+# Sign-up form. UserCreationForm already gives us:
+#   - username (required, max 150 chars, only letters/digits/@.+-_)
+#   - password1 + password2 (must match)
+#   - AUTH_PASSWORD_VALIDATORS from settings.py (so "1" is rejected)
+#   - save() that HASHES the password (never stored as plain text)
+# We only add the optional email field and a case-insensitive username check.
+class RegisterForm(UserCreationForm):
+    class Meta(UserCreationForm.Meta):
+        model = User
+        # 'email' is a real User field (blank=True), so it's optional here too
+        fields = ('username', 'email')
+
+    def clean_username(self):
+        username = self.cleaned_data['username']
+        # Block "Newbie" when "newbie" already exists - people forget their capitals
+        if User.objects.filter(username__iexact=username).exists():
+            raise forms.ValidationError("That username is already taken.")
+        return username
+
+
+# Login form. AuthenticationForm checks the username + password with
+# authenticate() and also refuses inactive accounts (is_active=False).
+# We only swap Django's long error text for a shorter, friendlier one.
+class LoginForm(AuthenticationForm):
+    error_messages = {
+        **AuthenticationForm.error_messages,
+        'invalid_login': "Invalid username or password.",
+    }
+
+
+# ---- Workouts --------------------------------------------------------------
 
 # Form for a member logging a workout.
 # A ModelForm builds its fields (and validation) from the WorkoutLog model.

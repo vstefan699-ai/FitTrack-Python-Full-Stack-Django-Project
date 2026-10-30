@@ -22,6 +22,11 @@ class LoginViewTests(TestCase):
         cls.trainer = make_trainer()
         cls.member = make_member()
 
+    def test_login_page_loads_with_a_form(self):
+        response = self.client.get(reverse('login'))
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('form', response.context)
+
     def test_member_login_goes_to_member_dashboard(self):
         response = self.client.post(reverse('login'), {'username': 'member', 'password': PASSWORD})
         self.assertRedirects(response, reverse('user_dashboard'))
@@ -32,9 +37,19 @@ class LoginViewTests(TestCase):
 
     def test_wrong_password_shows_error_and_stays_logged_out(self):
         response = self.client.post(reverse('login'), {'username': 'member', 'password': 'wrong'})
-        self.assertEqual(response.status_code, 200)
-        self.assertIn('Invalid username or password', message_texts(response))
+        self.assertContains(response, 'Invalid username or password.')  # status 200 AND on the page
         self.assertNotIn('_auth_user_id', self.client.session)  # Django stores the logged-in id here
+        # The username they typed is kept, so they only retype the password
+        self.assertContains(response, 'value="member"')
+
+    def test_missing_fields_show_errors_instead_of_crashing(self):
+        # Before: request.POST['username'] -> KeyError -> 500 page
+        response = self.client.post(reverse('login'), {})
+        self.assertEqual(response.status_code, 200)
+        form = response.context['form']
+        self.assertIn('username', form.errors)
+        self.assertIn('password', form.errors)
+        self.assertNotIn('_auth_user_id', self.client.session)
 
     def test_logged_in_member_visiting_login_is_redirected(self):
         self.client.force_login(self.member)
@@ -56,25 +71,83 @@ class RegisterViewTests(TestCase):
         data.update(changes)
         return self.client.post(reverse('register'), data)
 
+    def assertNobodyCreated(self, response):
+        # A failed sign-up shows the page again (200) and saves no user
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(User.objects.filter(username__iexact='newbie').exists())
+        self.assertNotIn('_auth_user_id', self.client.session)
+
     def test_register_creates_member_and_logs_them_in(self):
         response = self.register()
         self.assertRedirects(response, reverse('user_dashboard'))
         user = User.objects.get(username='newbie')
         self.assertFalse(user.is_staff)
+        self.assertEqual(user.email, 'newbie@example.com')
+        self.assertTrue(user.check_password('Strong-pass-1'))  # stored hashed, but it works
         self.assertEqual(int(self.client.session['_auth_user_id']), user.pk)
         self.assertTrue(hasattr(user, 'profile'))  # the signal made a profile
+        self.assertIn('Welcome to FitTrack Pro, newbie!', message_texts(response))
+
+    def test_email_is_optional(self):
+        response = self.register(email='')
+        self.assertRedirects(response, reverse('user_dashboard'))
+        self.assertEqual(User.objects.get(username='newbie').email, '')
+
+    def test_invalid_email_is_rejected(self):
+        response = self.register(email='not-an-email')
+        self.assertNobodyCreated(response)
+        self.assertIn('email', response.context['form'].errors)
 
     def test_mismatched_passwords_create_nobody(self):
         response = self.register(password2='Different-1')
-        self.assertRedirects(response, reverse('register'))
-        self.assertFalse(User.objects.filter(username='newbie').exists())
-        self.assertIn('Passwords do not match.', message_texts(response))
+        self.assertNobodyCreated(response)
+        self.assertIn('password2', response.context['form'].errors)
+
+    def test_weak_password_is_rejected(self):
+        # Before: "1" was accepted. Now AUTH_PASSWORD_VALIDATORS run.
+        response = self.register(password1='1', password2='1')
+        self.assertNobodyCreated(response)
+        self.assertIn('password2', response.context['form'].errors)  # Django puts it on password2
 
     def test_taken_username_is_rejected(self):
         make_member('newbie')
         response = self.register()
-        self.assertRedirects(response, reverse('register'))
-        self.assertEqual(User.objects.filter(username='newbie').count(), 1)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(User.objects.filter(username__iexact='newbie').count(), 1)
+        self.assertIn('username', response.context['form'].errors)
+
+    def test_taken_username_in_other_capitals_is_rejected(self):
+        make_member('newbie')
+        response = self.register(username='NewBie')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(User.objects.filter(username__iexact='newbie').count(), 1)
+        self.assertIn('That username is already taken.', response.context['form'].errors['username'])
+
+    def test_blank_username_is_rejected(self):
+        # Before: create_user('') crashed with a 500
+        response = self.register(username='   ')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('username', response.context['form'].errors)
+        self.assertEqual(User.objects.count(), 0)
+
+    def test_missing_fields_show_errors_instead_of_crashing(self):
+        # Before: request.POST['username'] -> KeyError -> 500 page
+        response = self.client.post(reverse('register'), {})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(User.objects.count(), 0)
+        self.assertIn('username', response.context['form'].errors)
+
+    def test_cannot_sign_up_as_a_trainer(self):
+        # Sneaky extra fields in the POST must be ignored
+        self.register(is_staff='on', is_superuser='on')
+        user = User.objects.get(username='newbie')
+        self.assertFalse(user.is_staff)
+        self.assertFalse(user.is_superuser)
+
+    def test_logged_in_member_visiting_register_is_redirected(self):
+        self.client.force_login(make_member())
+        response = self.client.get(reverse('register'))
+        self.assertRedirects(response, reverse('user_dashboard'))
 
 
 class LandingViewTests(TestCase):
