@@ -16,23 +16,24 @@
 
             {% if plan %}
             <!-- Assigned plan section -->
+            {# h-100: every stat card fills its column, so all three are equally tall #}
             <div class="row g-3 mb-4">
                 <div class="col-md-4">
-                    <div class="card stat-card p-3">
+                    <div class="card stat-card p-3 h-100">
                         <p class="text-muted small mb-1">My Program</p>
                         <h6 class="fw-bold">{{ plan.name }}</h6>
                         <i class="fas fa-dumbbell" style="color: #e63946;"></i>
                     </div>
                 </div>
                 <div class="col-md-4">
-                    <div class="card stat-card p-3">
+                    <div class="card stat-card p-3 h-100">
                         <p class="text-muted small mb-1">Total Exercises</p>
                         <h3 class="fw-bold">{{ plan_entries|length }}</h3>
                         <i class="fas fa-list" style="color: #e63946;"></i>
                     </div>
                 </div>
                 <div class="col-md-4">
-                    <div class="card stat-card p-3">
+                    <div class="card stat-card p-3 h-100">
                         <p class="text-muted small mb-1">My Logs</p>
                         <h3 class="fw-bold">{{ total_logs }}</h3>
                         <i class="fas fa-chart-bar" style="color: #e63946;"></i>
@@ -48,22 +49,24 @@
             <div class="row g-3">
                 {% for entry in plan_entries %}
                 <div class="col-md-4">
-                    <div class="card p-3">
+                    {# h-100: the card is as tall as the tallest card in its row #}
+                    <div class="card p-3 h-100">
                         <h6 class="fw-bold" style="color: #e63946;">{{ entry.exercise.name }}</h6>
                         <span class="badge bg-secondary mb-2">{{ entry.exercise.get_muscle_group_display }}</span>
                         <div class="d-flex gap-3 mt-1">
-                          <div class="text-center">
-                              <p class="small mb-0" style="color: #aaaaaa;">Sets</p>
-                              <h5 class="fw-bold mb-0" style="color: #ffffff;">{{ entry.sets }}</h5>
-                          </div>
-                          <div class="text-center">
-                              <p class="small mb-0" style="color: #aaaaaa;">Reps</p>
-                              <h5 class="fw-bold mb-0" style="color: #ffffff;">{{ entry.reps }}</h5>
-                          </div>
+                            <div class="text-center">
+                                <p class="small mb-0" style="color: #aaaaaa;">Sets</p>
+                                <h5 class="fw-bold mb-0" style="color: #ffffff;">{{ entry.sets }}</h5>
+                            </div>
+                            <div class="text-center">
+                                <p class="small mb-0" style="color: #aaaaaa;">Reps</p>
+                                <h5 class="fw-bold mb-0" style="color: #ffffff;">{{ entry.reps }}</h5>
+                            </div>
                         </div>
-                       <p class="small mt-2" style="color: #aaaaaa;">{{ entry.exercise.description }}</p>
-                        <a href="{% url 'workout_log' %}?exercise={{ entry.exercise.id }}" 
-                           class="btn btn-danger btn-sm mt-2">
+                        <p class="small mt-2" style="color: #aaaaaa;">{{ entry.exercise.description }}</p>
+                        {# mt-auto: pushes the button to the BOTTOM of the card, so all buttons line up #}
+                        <a href="{% url 'workout_log' %}?exercise={{ entry.exercise.id }}"
+                           class="btn btn-danger btn-sm mt-auto">
                             <i class="fas fa-plus"></i> Log This
                         </a>
                     </div>
