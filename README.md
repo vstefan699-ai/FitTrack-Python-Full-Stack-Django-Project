@@ -278,3 +278,12 @@ Vercel doesn't run `migrate`, so production database commands are run from a loc
 ## 👤 Author
 
 **Stefan Visser** · [GitHub](https://github.com/vstefan699-ai)
+
+---
+
+## Planned improvements
+
+- **Scoped demo trainer:** the demo trainer will only see and edit demo members and plans, so the trainer login can be made public.
+- **Return to the requested page after login** (`?next=`), with a safe-redirect check.
+- **Deactivate members instead of deleting them**, so their workout history is kept.
+- **Installable on phones** as a Progressive Web App (PWA).
