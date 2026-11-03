@@ -1,4 +1,6 @@
+import os
 from io import StringIO
+from unittest import mock
 
 from django.contrib.auth.models import User
 from django.core.management import call_command
@@ -8,14 +10,34 @@ from django.urls import reverse
 from django.utils import timezone
 
 from core.management.commands.seed_demo import (
-    DEMO_PASSWORD, MEMBER_USERNAME, PLAN_NAME, TRAINER_USERNAME,
+    MEMBER_PASSWORD, MEMBER_USERNAME, MIN_TRAINER_PASSWORD_LENGTH, PLAN_NAME,
+    TRAINER_FALLBACK_PASSWORD, TRAINER_PASSWORD_ENV_VAR, TRAINER_USERNAME,
 )
 from core.models import Exercise, WorkoutLog, WorkoutPlan, get_assigned_plan
 from .factories import PASSWORD, make_exercise, make_member
 
+# A pretend "private" production password, used only inside these tests
+SECRET_TRAINER_PASSWORD = 'Private-Trainer-Pass-42'
 
-def run_seed():
-    call_command('seed_demo', stdout=StringIO())  # StringIO: keep the test output clean
+
+def run_seed(trainer_password=None):
+    """
+    Runs seed_demo and returns everything it printed.
+
+    trainer_password=None -> the env var is REMOVED (local fallback path).
+    Anything else         -> the env var is set to that value.
+
+    patch.dict snapshots os.environ and restores it afterwards, so the
+    result never depends on what's set in YOUR terminal, and no test
+    leaks its env var into the next one.
+    """
+    out = StringIO()  # StringIO: keep the test output clean, and lets us read it
+    with mock.patch.dict(os.environ):
+        os.environ.pop(TRAINER_PASSWORD_ENV_VAR, None)
+        if trainer_password is not None:
+            os.environ[TRAINER_PASSWORD_ENV_VAR] = trainer_password
+        call_command('seed_demo', stdout=out)
+    return out.getvalue()
 
 
 class SeedDemoTests(TestCase):
@@ -30,10 +52,11 @@ class SeedDemoTests(TestCase):
         self.assertEqual(get_assigned_plan(member).name, PLAN_NAME)
 
     def test_demo_accounts_can_log_in(self):
-        run_seed()
-        for username in (TRAINER_USERNAME, MEMBER_USERNAME):
+        run_seed()  # no env var -> trainer gets the local fallback
+        for username, password in ((TRAINER_USERNAME, TRAINER_FALLBACK_PASSWORD),
+                                   (MEMBER_USERNAME, MEMBER_PASSWORD)):
             with self.subTest(username=username):
-                self.assertTrue(self.client.login(username=username, password=DEMO_PASSWORD))
+                self.assertTrue(self.client.login(username=username, password=password))
                 self.client.logout()
 
     def test_history_is_in_the_past_and_shows_on_progress_page(self):
@@ -70,3 +93,46 @@ class SeedDemoTests(TestCase):
         self.assertTrue(User.objects.get(username=MEMBER_USERNAME).check_password(PASSWORD))
         # ...and atomic() undid everything, even the trainer created a moment earlier
         self.assertFalse(User.objects.filter(username=TRAINER_USERNAME).exists())
+
+    # ---------- trainer password (the security fix) ----------
+
+    def test_trainer_uses_the_password_from_the_env_var(self):
+        output = run_seed(SECRET_TRAINER_PASSWORD)
+        trainer = User.objects.get(username=TRAINER_USERNAME)
+        self.assertTrue(trainer.check_password(SECRET_TRAINER_PASSWORD))
+        # Neither public password works for the trainer
+        self.assertFalse(trainer.check_password(MEMBER_PASSWORD))
+        self.assertFalse(trainer.check_password(TRAINER_FALLBACK_PASSWORD))
+        # The member keeps the public README password
+        member = User.objects.get(username=MEMBER_USERNAME)
+        self.assertTrue(member.check_password(MEMBER_PASSWORD))
+        # The private password is never printed, and there's no warning
+        self.assertNotIn(SECRET_TRAINER_PASSWORD, output)
+        self.assertNotIn('WARNING', output)
+
+    def test_missing_env_var_prints_a_warning(self):
+        output = run_seed()
+        self.assertIn('WARNING', output)
+        self.assertIn(TRAINER_PASSWORD_ENV_VAR, output)
+
+    def test_rejects_unsafe_env_passwords_before_touching_the_database(self):
+        unsafe = {
+            'empty': '',
+            'only spaces': '   ',
+            'public member password': MEMBER_PASSWORD,
+            'public fallback password': TRAINER_FALLBACK_PASSWORD,
+            'too short': 'x' * (MIN_TRAINER_PASSWORD_LENGTH - 1),
+        }
+        for reason, bad_password in unsafe.items():
+            with self.subTest(reason=reason):
+                with self.assertRaises(CommandError):
+                    run_seed(bad_password)
+                self.assertFalse(User.objects.filter(username__startswith='demo_').exists())
+
+    def test_reseeding_with_env_var_replaces_the_old_trainer_password(self):
+        # Exactly what happens on production: old password out, new one in
+        run_seed()
+        run_seed(SECRET_TRAINER_PASSWORD)
+        trainer = User.objects.get(username=TRAINER_USERNAME)
+        self.assertFalse(trainer.check_password(TRAINER_FALLBACK_PASSWORD))
+        self.assertTrue(trainer.check_password(SECRET_TRAINER_PASSWORD))

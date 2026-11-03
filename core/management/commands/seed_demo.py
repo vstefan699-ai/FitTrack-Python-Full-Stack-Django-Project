@@ -1,11 +1,19 @@
 """
-Creates (or refreshes) the public demo accounts for FitTrack Pro.
+Creates (or refreshes) the demo accounts for FitTrack Pro.
 
     python manage.py seed_demo
+
+Passwords:
+  - demo MEMBER password is PUBLIC (it's in the README).
+  - demo TRAINER password is PRIVATE on production. Set it in the
+    DEMO_TRAINER_PASSWORD environment variable before running.
+    If that variable is missing, a LOCAL-ONLY fallback is used (fine for
+    the dev branch, NEVER for production) and a warning is printed.
 
 Safe to run again and again: it never duplicates anything, and every run
 rebuilds the demo member's workout history so it always ends last week.
 """
+import os
 from datetime import timedelta
 
 from django.contrib.auth.models import User
@@ -15,10 +23,18 @@ from django.utils import timezone
 
 from core.models import Exercise, PlanExercise, UserProfile, WorkoutLog, WorkoutPlan
 
-# These are PUBLIC (they go in the README) - never reuse this password anywhere!
-DEMO_PASSWORD = 'FitTrackDemo2026!'
 TRAINER_USERNAME = 'demo_trainer'
 MEMBER_USERNAME = 'demo_member'
+
+# PUBLIC - it's in the README. Never reuse this password anywhere!
+MEMBER_PASSWORD = 'FitTrackDemo2026!'
+
+# The real trainer password lives ONLY in this environment variable.
+TRAINER_PASSWORD_ENV_VAR = 'DEMO_TRAINER_PASSWORD'
+# This file is in a public repo, so this fallback is effectively public too.
+# It only exists so local dev and the tests work without extra setup.
+TRAINER_FALLBACK_PASSWORD = 'TrainerLocalOnly2026!'
+MIN_TRAINER_PASSWORD_LENGTH = 12
 
 # Marker on OUR demo accounts. Real sign-ups have an empty last name, so a
 # real person who registered "demo_member" first is never touched.
@@ -53,14 +69,54 @@ def round_to_plate(kg):
     return round(kg / 1.25) * 1.25
 
 
+def get_trainer_password():
+    """
+    Returns (password, came_from_env).
+
+    Read at RUN time (not when the file is imported), so tests can change
+    the environment variable between runs.
+    """
+    raw = os.environ.get(TRAINER_PASSWORD_ENV_VAR)
+
+    # Variable missing completely -> local fallback (handle() prints a warning)
+    if raw is None:
+        return TRAINER_FALLBACK_PASSWORD, False
+
+    # strip(): a stray space from pasting into Read-Host won't sneak in
+    password = raw.strip()
+
+    # Variable SET but empty = almost certainly a mistake (Enter pressed too
+    # early). Stop loudly instead of silently using the public fallback.
+    if not password:
+        raise CommandError(
+            f'{TRAINER_PASSWORD_ENV_VAR} is set but empty. Set it again, or remove it '
+            f'to use the local fallback (dev branch only!).'
+        )
+    if password in (MEMBER_PASSWORD, TRAINER_FALLBACK_PASSWORD):
+        raise CommandError(
+            f'{TRAINER_PASSWORD_ENV_VAR} must NOT be one of the public passwords '
+            f'from seed_demo.py. Choose a new, private one.'
+        )
+    if len(password) < MIN_TRAINER_PASSWORD_LENGTH:
+        raise CommandError(
+            f'{TRAINER_PASSWORD_ENV_VAR} must be at least '
+            f'{MIN_TRAINER_PASSWORD_LENGTH} characters long.'
+        )
+    return password, True
+
+
 class Command(BaseCommand):
     help = 'Create or refresh the demo trainer + demo member with sample data.'
 
     def handle(self, *args, **options):
+        # Checked BEFORE touching the database: a bad password stops
+        # everything before a single row is written.
+        trainer_password, from_env = get_trainer_password()
+
         # atomic: if ANY step fails, nothing at all is saved
         with transaction.atomic():
-            trainer = self.get_demo_user(TRAINER_USERNAME, is_staff=True)
-            member = self.get_demo_user(MEMBER_USERNAME, is_staff=False)
+            trainer = self.get_demo_user(TRAINER_USERNAME, trainer_password, is_staff=True)
+            member = self.get_demo_user(MEMBER_USERNAME, MEMBER_PASSWORD, is_staff=False)
             exercises = self.get_exercises()
             plan = self.build_plan(trainer, exercises)
 
@@ -71,12 +127,21 @@ class Command(BaseCommand):
             log_count = self.build_history(member, exercises)
 
         self.stdout.write(self.style.SUCCESS('Demo data ready!'))
-        self.stdout.write(f'  Trainer: {TRAINER_USERNAME} / {DEMO_PASSWORD}')
-        self.stdout.write(f'  Member:  {MEMBER_USERNAME} / {DEMO_PASSWORD}')
+        if from_env:
+            # Never print the private password - terminal output can end up in screenshots
+            self.stdout.write(f'  Trainer: {TRAINER_USERNAME} / '
+                              f'(password from {TRAINER_PASSWORD_ENV_VAR} - not shown)')
+        else:
+            self.stdout.write(f'  Trainer: {TRAINER_USERNAME} / {TRAINER_FALLBACK_PASSWORD}')
+            self.stdout.write(self.style.WARNING(
+                f'  WARNING: {TRAINER_PASSWORD_ENV_VAR} is not set, so the trainer got the '
+                f'LOCAL fallback password. NEVER run it like this on production!'
+            ))
+        self.stdout.write(f'  Member:  {MEMBER_USERNAME} / {MEMBER_PASSWORD}')
         self.stdout.write(f'  Plan "{plan.name}" with {len(exercises)} exercises, '
                           f'{log_count} workout logs over {WEEKS_OF_HISTORY} weeks')
 
-    def get_demo_user(self, username, is_staff):
+    def get_demo_user(self, username, password, is_staff):
         user = User.objects.filter(username=username).first()
         if user is None:
             user = User(username=username, first_name='FitTrack', last_name=DEMO_LAST_NAME)
@@ -89,7 +154,7 @@ class Command(BaseCommand):
         user.is_staff = is_staff
         user.is_superuser = False  # a public account must NEVER be a superuser
         user.is_active = True
-        user.set_password(DEMO_PASSWORD)  # also resets it if a visitor somehow changed it
+        user.set_password(password)  # also resets it if a visitor somehow changed it
         user.save()  # new users get their profile from the post_save signal
         return user
 
